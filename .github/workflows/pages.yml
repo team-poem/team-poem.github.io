@@ -31,9 +31,9 @@ jobs:
           REQUESTED_SHA: ${{ inputs.source_sha }}
         run: |
           source_sha=$(gh api repos/team-poem/cairn-landing/commits/main --jq .sha)
-          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]] || exit 1
           if [[ -n "$REQUESTED_SHA" ]]; then
-            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]] || exit 1
             if [[ "$REQUESTED_SHA" != "$source_sha" ]]; then
               echo 'main이 갱신되어 이전 커밋의 배포 요청을 생략합니다.' >> "$GITHUB_STEP_SUMMARY"
               echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
