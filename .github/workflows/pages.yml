@@ -1,10 +1,16 @@
 name: Cairn Pages
+run-name: Cairn Pages · ${{ inputs.source_sha || 'latest main' }}
 on:
   push:
     branches: [main]
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '2-59/5 * * * *'
   workflow_dispatch:
+    inputs:
+      source_sha:
+        description: '배포할 main 커밋 SHA (비우면 최신 main)'
+        required: false
+        type: string
 permissions:
   contents: read
 concurrency:
@@ -22,9 +28,19 @@ jobs:
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
+          REQUESTED_SHA: ${{ inputs.source_sha }}
         run: |
           source_sha=$(gh api repos/team-poem/cairn-landing/commits/main --jq .sha)
           [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          if [[ -n "$REQUESTED_SHA" ]]; then
+            [[ "$REQUESTED_SHA" =~ ^[0-9a-f]{40}$ ]]
+            if [[ "$REQUESTED_SHA" != "$source_sha" ]]; then
+              echo 'main이 갱신되어 이전 커밋의 배포 요청을 생략합니다.' >> "$GITHUB_STEP_SUMMARY"
+              echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+              echo 'changed=false' >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+          fi
           published_sha=$(curl --fail --silent --show-error --max-time 20 --retry 2 \
             "https://team-poem.github.io/source-sha.txt?run=$GITHUB_RUN_ID" || true)
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
