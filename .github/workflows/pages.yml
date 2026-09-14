@@ -1,0 +1,84 @@
+name: Cairn Pages
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: cairn-pages
+  cancel-in-progress: false
+jobs:
+  source:
+    name: main 변경 확인
+    runs-on: ubuntu-latest
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      changed: ${{ steps.source.outputs.changed }}
+    steps:
+      - name: 배포할 소스 커밋 고정
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source_sha=$(gh api repos/team-poem/cairn-landing/commits/main --jq .sha)
+          [[ "$source_sha" =~ ^[0-9a-f]{40}$ ]]
+          published_sha=$(curl --fail --silent --show-error --max-time 20 --retry 2 \
+            "https://team-poem.github.io/source-sha.txt?run=$GITHUB_RUN_ID" || true)
+          echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_EVENT_NAME" != schedule || "$source_sha" != "$published_sha" ]]; then
+            echo 'changed=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'changed=false' >> "$GITHUB_OUTPUT"
+            echo '이미 최신 main이 배포되어 있습니다.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+  build:
+    name: 랜딩 검증 및 정적 빌드
+    needs: source
+    if: needs.source.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: team-poem/cairn-landing
+          ref: ${{ needs.source.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run test:demo
+      - run: npm run build
+      - name: 정적 산출물 검증
+        env:
+          SOURCE_SHA: ${{ needs.source.outputs.sha }}
+        run: |
+          test -s dist/client/index.html
+          test -s dist/client/404.html
+          printf '%s\n' "$SOURCE_SHA" > dist/client/source-sha.txt
+          touch dist/client/.nojekyll
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/client
+  deploy:
+    name: GitHub Pages 게시
+    needs: [source, build]
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
+      - name: 배포 커밋 기록
+        env:
+          SOURCE_SHA: ${{ needs.source.outputs.sha }}
+        run: echo "https://team-poem.github.io/ — source https://github.com/team-poem/cairn-landing/commit/$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
