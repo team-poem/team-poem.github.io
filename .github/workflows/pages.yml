@@ -42,7 +42,7 @@ jobs:
             fi
           fi
           published_sha=$(curl --fail --silent --show-error --max-time 20 --retry 2 \
-            "https://team-poem.github.io/source-sha.txt?run=$GITHUB_RUN_ID" || true)
+            "https://team-poem.github.io/cairn-engine/source-sha.txt?run=$GITHUB_RUN_ID" || true)
           echo "sha=$source_sha" >> "$GITHUB_OUTPUT"
           if [[ "$GITHUB_EVENT_NAME" != schedule || "$source_sha" != "$published_sha" ]]; then
             echo 'changed=true' >> "$GITHUB_OUTPUT"
@@ -70,17 +70,17 @@ jobs:
       - run: npm run lint
       - run: npm run test:demo
       - run: npm run build
+        env:
+          NEXT_PUBLIC_BASE_PATH: /cairn-engine
       - name: 정적 산출물 검증
         env:
           SOURCE_SHA: ${{ needs.source.outputs.sha }}
         run: |
-          test -s dist/client/index.html
-          test -s dist/client/404.html
-          printf '%s\n' "$SOURCE_SHA" > dist/client/source-sha.txt
-          touch dist/client/.nojekyll
+          python3 scripts/prepare-pages.py
+          python3 tests/check-static-paths.py dist/pages /cairn-engine
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist/client
+          path: dist/pages
   deploy:
     name: GitHub Pages 게시
     needs: [source, build]
@@ -90,11 +90,11 @@ jobs:
       id-token: write
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: https://team-poem.github.io/cairn-engine/
     steps:
       - uses: actions/deploy-pages@v4
         id: deployment
       - name: 배포 커밋 기록
         env:
           SOURCE_SHA: ${{ needs.source.outputs.sha }}
-        run: echo "https://team-poem.github.io/ — source https://github.com/team-poem/cairn-landing/commit/$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+        run: echo "https://team-poem.github.io/cairn-engine/ — source https://github.com/team-poem/cairn-landing/commit/$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
