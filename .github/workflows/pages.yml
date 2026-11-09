@@ -19,11 +19,17 @@ concurrency:
 jobs:
   source:
     name: main 변경 확인
-    runs-on: ubuntu-latest
+    runs-on: poem-public
     outputs:
       sha: ${{ steps.source.outputs.sha }}
       changed: ${{ steps.source.outputs.changed }}
     steps:
+      - name: gh CLI 준비 (self-hosted 이미지에는 없음)
+        run: |
+          command -v gh >/dev/null && exit 0
+          v=2.103.3 a=$(dpkg --print-architecture)
+          curl -fsSL "https://github.com/cli/cli/releases/download/v$v/gh_${v}_linux_$a.tar.gz" | tar -xz -C "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/gh_${v}_linux_$a/bin" >> "$GITHUB_PATH"
       - name: 배포할 소스 커밋 고정
         id: source
         env:
@@ -54,7 +60,7 @@ jobs:
     name: 랜딩 검증 및 정적 빌드
     needs: source
     if: needs.source.outputs.changed == 'true'
-    runs-on: ubuntu-latest
+    runs-on: poem-public
     steps:
       - uses: actions/checkout@v4
         with:
@@ -65,6 +71,9 @@ jobs:
         with:
           node-version: 24
           cache: npm
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
       - run: npm ci
       - run: npm run typecheck
       - run: npm run lint
@@ -84,7 +93,7 @@ jobs:
   deploy:
     name: GitHub Pages 게시
     needs: [source, build]
-    runs-on: ubuntu-latest
+    runs-on: poem-public
     permissions:
       pages: write
       id-token: write
